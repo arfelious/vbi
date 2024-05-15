@@ -13,9 +13,12 @@ import h3
 if __name__ == '__main__':
     def oranla(sorunlu,sorunsuz):
         return max(0,(sorunlu-1)/max(1,sorunsuz+sorunlu))
+    def list_oranla(curr):
+        return oranla(curr[1],curr[0])
+    yapilacaklar={"olustur":False,"test":False,"video":False,"baskent":True}
     olustur=True
     test=False
-    if olustur:
+    if yapilacaklar["olustur"]:
         dosyalar=sorted(os.listdir("./data/map"))
         veriler=[]
         veri_gunler = []
@@ -49,11 +52,6 @@ if __name__ == '__main__':
                 if not j[1] in gunluk_sehir_sayac[i][j[0]]: gunluk_sehir_sayac[i][j[0]][j[1]]=[0,0]
                 gunluk_ulke_sayac[i][j[0]]=[gunluk_ulke_sayac[i][j[0]][0]+j[2],gunluk_ulke_sayac[i][j[0]][1]+j[3]]
                 gunluk_sehir_sayac[i][j[0]][j[1]]=[gunluk_sehir_sayac[i][j[0]][j[1]][0]+j[2],gunluk_sehir_sayac[i][j[0]][j[1]][1]+j[3]]
-    
-        baskentler=pd.read_csv("./data/countries.csv")
-        baskent_dict={}
-        for _,i in baskentler.iterrows():
-            baskent_dict[i["country"]]=i["capital"]
         cc2country=pd.read_csv("./data/cc_to_country.csv")
         corruption_arr=pd.read_csv("./data/corruption_data.csv")
         corruption_dict = {}
@@ -159,33 +157,62 @@ if __name__ == '__main__':
                 sayac+=1
     country_df=pd.read_csv("./data/country_data.csv")
     country_df["data"]=country_df["data"].apply(json.loads)
-    city_df=pd.read_csv("./data/country_data.csv")
+    city_df=pd.read_csv("./data/city_data.csv")
     city_df["data"]=city_df["data"].apply(json.loads)
-    genis_dict={"date":[]}
-    son_tarih=None
-    for _,row in country_df.iterrows():
-        guncel_tarih=row["date"]
-        if son_tarih!=guncel_tarih:
-            genis_dict["date"].append(guncel_tarih)
-            son_tarih=guncel_tarih
-        cc=row["cc"]
-        if not cc in genis_dict: genis_dict[cc]=[]
-        data=row["data"]
-        sorunlu_toplam=reduce(lambda acc,x:acc+x[1],data,0)
-        sorunsuz_toplam=reduce(lambda acc,x:acc+x[0],data,0)
-        oran=math.floor(1000*oranla(sorunlu_toplam,sorunsuz_toplam))/10
-        genis_dict[cc].append(oran)
-    hafta_df=pd.DataFrame.from_dict(genis_dict)
-    hafta_df.set_index("date",inplace=True)
-    bcr.bar_chart_race(
-        df=hafta_df,
-        filename="test.mp4",
-        orientation='h', 
-        sort='desc', 
-        n_bars=20, 
-        bar_texttemplate='{x:,.2f}',
-        period_length=1000,
-        steps_per_period=50,
-        end_period_pause=500,
-        title="Haftalık GPS Jammer Sıralaması"
-    ) 
+    if yapilacaklar["baskent"]:
+        baskentler=pd.read_csv("./data/countries.csv")
+        baskent_dict={}
+        for _,i in baskentler.iterrows():
+            baskent_dict[i["country"]]=i["capital"]
+        ulke_basine_jammer_sehir={}
+        for _,row in city_df.iterrows():
+            data=row["data"]
+            country=row["cc"]
+            city=row["city"]
+            if  city!=city: continue
+            jammer_var=False
+            for i in range(7):
+                if data[i][1]:
+                    jammer_var=True
+                    break
+            if jammer_var:
+                if not country in ulke_basine_jammer_sehir:
+                    ulke_basine_jammer_sehir[country]={}
+                if not city in ulke_basine_jammer_sehir[country]:
+                    ulke_basine_jammer_sehir[country][city]=[0,0]
+                for i in range(7):
+                    ulke_basine_jammer_sehir[country][city]=[ulke_basine_jammer_sehir[country][city][0]+data[i][0],
+                    ulke_basine_jammer_sehir[country][city][1]+data[i][1]]
+        sehir_siralanmis={i:sorted(list(ulke_basine_jammer_sehir[i].items()),
+        key=lambda a:list_oranla(ulke_basine_jammer_sehir[i][a[0]])) for i in ulke_basine_jammer_sehir}
+        #ülke başına en çok jammer içeren şehirler sıralandı ama başkentte var mı hipotezi kontrol edilecek
+
+    if yapilacaklar["video"]:
+        genis_dict={"date":[]}
+        son_tarih=None
+        for _,row in country_df.iterrows():
+            guncel_tarih=row["date"]
+            if son_tarih!=guncel_tarih:
+                genis_dict["date"].append(guncel_tarih)
+                son_tarih=guncel_tarih
+            cc=row["cc"]
+            if not cc in genis_dict: genis_dict[cc]=[]
+            data=row["data"]
+            sorunlu_toplam=reduce(lambda acc,x:acc+x[1],data,0)
+            sorunsuz_toplam=reduce(lambda acc,x:acc+x[0],data,0)
+            oran=math.floor(1000*oranla(sorunlu_toplam,sorunsuz_toplam))/10
+            genis_dict[cc].append(oran)
+        hafta_df=pd.DataFrame.from_dict(genis_dict)
+        hafta_df.set_index("date",inplace=True)
+        bcr.bar_chart_race(
+            df=hafta_df,
+            filename="test.mp4",
+            orientation='h', 
+            sort='desc', 
+            n_bars=20, 
+            bar_texttemplate='{x:,.2f}',
+            period_length=1000,
+            steps_per_period=50,
+            end_period_pause=500,
+            title="Haftalık GPS Jammer Sıralaması"
+        ) 
