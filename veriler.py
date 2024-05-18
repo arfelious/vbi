@@ -5,9 +5,9 @@ gun=timedelta(days=1)
 guncel=datetime.now()-gun*2
 arr=os.listdir("./data/map")
 map_set=set(arr)
-sayac=len(arr)
+sayac=0
 sorun_sayac=0
-while sayac<1000:
+while sayac<600:
     tarih=guncel.strftime("%Y-%m-%d")
     print(sayac,guncel.strftime("%Y-%m-%d"))
     dosya_adi=tarih+".csv"

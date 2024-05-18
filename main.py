@@ -1,8 +1,9 @@
+print("Loading libraries")
 import matplotlib.pyplot as plt
 import reverse_geocoder as rg
 import bar_chart_race as bcr # pip install git+https://github.com/programiz/bar_chart_race.git@master
 from functools import reduce
-import pandas as pd
+import polars as pd
 import datetime
 import plotly
 import json 
@@ -10,166 +11,216 @@ import math
 import csv
 import os
 import h3
+import gc
 if __name__ == '__main__':
     def oranla(sorunlu,sorunsuz):
         return max(0,(sorunlu-1)/max(1,sorunsuz+sorunlu))
     def list_oranla(curr):
         return oranla(curr[1],curr[0])
-    yapilacaklar={"olustur":False,"test":False,"video":False,"baskent":True}
-    olustur=True
-    test=False
+    def log(*args):print(*args,end="")
+    yapilacaklar={"olustur":True,"test":False,"video":False,"baskent":True}
     if yapilacaklar["olustur"]:
         dosyalar=sorted(os.listdir("./data/map"))
         veriler=[]
         veri_gunler = []
-        miktar=min(len(dosyalar),10) if test else len(dosyalar)
-        for i in range(miktar):
-            veri_gunler.append(datetime.datetime.strptime(dosyalar[i].split(".csv")[0],"%Y-%m-%d"))
-            ayristirilan=[]
-            koordinatlar=[]
-            df=pd.read_csv("./data/map/"+dosyalar[i])
-            df_miktar=min(len(df),10000) if test else len(df)
-            for j in range(df_miktar):
-                if j%1000==0:print(i,miktar,i/miktar+j/df_miktar/miktar,j,df_miktar,j/df_miktar)
-                guncel=df.loc[j]
-                koordinatlar.append(h3.h3_to_geo(guncel.hex))
-                ayristirilan.append([int(guncel.count_good_aircraft),int(guncel.count_bad_aircraft)])
-            ulkeler=rg.search(koordinatlar,verbose=False)
-            veriler.append([[ulkeler[i]["cc"],ulkeler[i]["admin1"],ayristirilan[i][0],ayristirilan[i][1]] for i in range(df_miktar)])
-            del df,koordinatlar,ayristirilan
+        miktar=len(dosyalar)
+        gecerli_miktar=0
+        test=yapilacaklar["test"]
+        aranacak=[]
+        total_ayristirilan=[]
+        aranacak_miktarlar=[]
+        from cProfile import Profile
+        from pstats import SortKey, Stats
+        with Profile() as profile:
+            def aranacak_hallet(force):
+                global aranacak,total_ayristirilan,aranacak_miktarlar
+                aranacak_miktar=len(aranacak)
+                yapilacak_miktar=len(aranacak_miktarlar)
+                if yapilacak_miktar>=50 or (force and yapilacak_miktar>0):
+                    bulunan=rg.search(aranacak,verbose=False)
+                    son=0
+                    for i in range(len(aranacak_miktarlar)):
+                        e=aranacak_miktarlar[i]
+                        guncel=bulunan[son:son+e]
+                        veriler.append([[guncel[j]["cc"],
+                        guncel[j]["admin1"],
+                        total_ayristirilan[i][j][0],
+                        total_ayristirilan[i][j][1]] for j in range(e)])
+                        son+=e
+                    del aranacak,total_ayristirilan,aranacak_miktarlar
+                    aranacak=[]
+                    total_ayristirilan=[]
+                    aranacak_miktarlar=[]
+                    gc.collect()
+            for i in range(miktar):
+                if test and i%100>0:continue
+                gecerli_miktar+=1
+                veri_gunler.append(datetime.datetime.strptime(dosyalar[i].split(".csv")[0],"%Y-%m-%d"))
+                ayristirilan=[]
+                df=pd.read_csv("./data/map/"+dosyalar[i])
+                df_miktar=len(df)
+                j=0
+                for guncel in df.rows(named=True):
+                    if test and j%100>0:continue
+                    j+=1
+                    if j%10000==0:print(i,miktar,i/miktar+j/df_miktar/miktar,j,df_miktar,j/df_miktar)
+                    aranacak.append(h3.h3_to_geo(guncel["hex"]))
+                    ayristirilan.append([int(guncel["count_good_aircraft"]),int(guncel["count_bad_aircraft"])])
+                aranacak_miktarlar.append(j)
+                total_ayristirilan.append(ayristirilan)
+                aranacak_hallet(False)
+                del df,ayristirilan
+            aranacak_hallet(True)
+            #Stats(profile).strip_dirs().sort_stats(SortKey.CALLS).print_stats()
+            gunluk_ulke_sayac=[{} for i in range(gecerli_miktar)]
+            gunluk_sehir_sayac=[{} for i in range(gecerli_miktar)]
             ulke_basina={}
-        gunluk_ulke_sayac=[{} for i in range(miktar)]
-        gunluk_sehir_sayac=[{} for i in range(miktar)]
-        for i in range(miktar):
-            guncel_veri=veriler[i]
-            for j in guncel_veri:
-                if not j[0] in ulke_basina:ulke_basina[j[0]]={}
-                if not j[1] in ulke_basina[j[0]]: ulke_basina[j[0]][j[1]]=[0,0]
-                ulke_basina[j[0]][j[1]]=[ulke_basina[j[0]][j[1]][0]+j[2],ulke_basina[j[0]][j[1]][1]+j[3]]
-                if not j[0] in gunluk_ulke_sayac[i]:
-                    gunluk_ulke_sayac[i][j[0]]=[0,0]
-                    gunluk_sehir_sayac[i][j[0]]={}
-                if not j[1] in gunluk_sehir_sayac[i][j[0]]: gunluk_sehir_sayac[i][j[0]][j[1]]=[0,0]
-                gunluk_ulke_sayac[i][j[0]]=[gunluk_ulke_sayac[i][j[0]][0]+j[2],gunluk_ulke_sayac[i][j[0]][1]+j[3]]
-                gunluk_sehir_sayac[i][j[0]][j[1]]=[gunluk_sehir_sayac[i][j[0]][j[1]][0]+j[2],gunluk_sehir_sayac[i][j[0]][j[1]][1]+j[3]]
-        cc2country=pd.read_csv("./data/cc_to_country.csv")
-        corruption_arr=pd.read_csv("./data/corruption_data.csv")
-        corruption_dict = {}
-        for _,row in corruption_arr.iterrows():corruption_dict[row["region_name"].strip()]=row["2021"]
-        hdi_arr=pd.read_csv("./data/hdi.csv")
-        hdi={}
-        for i,row in hdi_arr.iterrows():hdi[row["country"]]=row["Hdi2022"]
-        cc={}
-        country2cc={}
-        for _,i in cc2country.iterrows():
-            cc[i["alpha-2"]]=i["name"]
-            country2cc[i["name"]]=i["alpha-2"]
-    
-        hafta_sayilar={}
-        hafta_array={}
-        hafta_sehir_array={}
-        ulke_gecerli_gun_miktar={}
-        guncel_hafta=veri_gunler[0].strftime("%Y-%m-%d")
-        hafta_sayilar[guncel_hafta]={}
-        hafta_array[guncel_hafta]={}
-        hafta_sehir_array[guncel_hafta]={}
-        son_tarih=veri_gunler[0].timestamp()
-        bir_gun=24*60*60
-        bir_hafta=7*bir_gun
-        hafta_tarihler=[guncel_hafta]
-        for i in range(miktar):
-            tarih=veri_gunler[i]
-            guncel_timestamp=tarih.timestamp()
-            fark=guncel_timestamp-son_tarih
-            while fark>=bir_hafta:
-                son_tarih+=bir_hafta
+            for i in range(gecerli_miktar):
+                guncel_veri=veriler[i]
+                for j in guncel_veri:
+                    if not j[0] in ulke_basina:ulke_basina[j[0]]={}
+                    if not j[1] in ulke_basina[j[0]]: ulke_basina[j[0]][j[1]]=[0,0]
+                    ulke_basina[j[0]][j[1]]=[ulke_basina[j[0]][j[1]][0]+j[2],ulke_basina[j[0]][j[1]][1]+j[3]]
+                    if not j[0] in gunluk_ulke_sayac[i]:
+                        gunluk_ulke_sayac[i][j[0]]=[0,0]
+                        gunluk_sehir_sayac[i][j[0]]={}
+                    if not j[1] in gunluk_sehir_sayac[i][j[0]]: gunluk_sehir_sayac[i][j[0]][j[1]]=[0,0]
+                    gunluk_ulke_sayac[i][j[0]]=[gunluk_ulke_sayac[i][j[0]][0]+j[2],gunluk_ulke_sayac[i][j[0]][1]+j[3]]
+                    gunluk_sehir_sayac[i][j[0]][j[1]]=[gunluk_sehir_sayac[i][j[0]][j[1]][0]+j[2],gunluk_sehir_sayac[i][j[0]][j[1]][1]+j[3]]
+            cc2country=pd.read_csv("./data/cc_to_country.csv")
+            corruption_arr=pd.read_csv("./data/corruption_data.csv")
+            baskentler=pd.read_csv("./data/countries.csv")
+            baskent_dict={}
+            for i in baskentler.rows(named=True):
+                baskent_dict[i["country"]]=i["capital"]
+            corruption_dict = {}
+            for row in corruption_arr.rows(named=True):corruption_dict[row["region_name"].strip()]=row["2021"]
+            hdi_arr=pd.read_csv("./data/hdi.csv")
+            hdi={}
+            for row in hdi_arr.rows(named=True):hdi[row["country"]]=row["Hdi2022"]
+            cc={}
+            country2cc={}
+            for i in cc2country.rows(named=True):
+                cc[i["alpha-2"]]=i["name"]
+                country2cc[i["name"]]=i["alpha-2"]
+
+            hafta_sayilar={}
+            hafta_array={}
+            hafta_sehir_array={}
+            ulke_gecerli_gun_miktar={}
+            guncel_hafta=veri_gunler[0].strftime("%Y-%m-%d")
+            hafta_sayilar[guncel_hafta]={}
+            hafta_array[guncel_hafta]={}
+            hafta_sehir_array[guncel_hafta]={}
+            son_tarih=veri_gunler[0].timestamp()
+            bir_gun=24*60*60
+            bir_hafta=7*bir_gun
+            hafta_tarihler=[guncel_hafta]
+            for i in range(gecerli_miktar):
+                tarih=veri_gunler[i]
+                guncel_timestamp=tarih.timestamp()
                 fark=guncel_timestamp-son_tarih
-                guncel_hafta=datetime.datetime.fromtimestamp(son_tarih).strftime("%Y-%m-%d")
-                hafta_tarihler.append(guncel_hafta)
-                hafta_sayilar[guncel_hafta]={}
-                hafta_array[guncel_hafta]={}
-                hafta_sehir_array[guncel_hafta]={}
-            guncel_gun=math.floor(fark/bir_gun)
-            veri=gunluk_ulke_sayac[i]
-            for j in veri:
-                if not j in hafta_sayilar[guncel_hafta]:
-                    hafta_sayilar[guncel_hafta][j]=[0,0]
-                    hafta_array[guncel_hafta][j]=[]
-                    hafta_sehir_array[guncel_hafta][j]={}
-                if not j in ulke_gecerli_gun_miktar:ulke_gecerli_gun_miktar[j]=0
-                ulke_gecerli_gun_miktar[j]+=1
-                hafta_sayilar[guncel_hafta][j]=[hafta_sayilar[guncel_hafta][j][0]+veri[j][0],hafta_sayilar[guncel_hafta][j][1]+veri[j][1]]
-                hafta_array[guncel_hafta][j].append([guncel_gun,veri[j][0],veri[j][1]])
-            sehir=gunluk_sehir_sayac[i]
-            for j in sehir:
-                for q in sehir[j]:
-                    if not q in hafta_sehir_array[guncel_hafta][j]:
-                        hafta_sehir_array[guncel_hafta][j][q]=[]
-                    hafta_sehir_array[guncel_hafta][j][q].append([guncel_gun,sehir[j][q][0],sehir[j][q][1]])
-    
-        to_delete=[]
-        header=["date","cc","data","hdi","corruption","is_near_war"]
-        for i in hafta_sayilar:
-            for j in hafta_sayilar[i]:
-                if ulke_gecerli_gun_miktar[j]!=miktar: to_delete.append([i,j])
-        for i in to_delete:
-            del hafta_sayilar[i[0]][i[1]]
-            del hafta_array[i[0]][i[1]]
-        with open("./data/country_data.csv", mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(header)
-            sayac=0
+                while fark>=bir_hafta:
+                    son_tarih+=bir_hafta
+                    fark=guncel_timestamp-son_tarih
+                    guncel_hafta=datetime.datetime.fromtimestamp(son_tarih).strftime("%Y-%m-%d")
+                    hafta_tarihler.append(guncel_hafta)
+                    hafta_sayilar[guncel_hafta]={}
+                    hafta_array[guncel_hafta]={}
+                    hafta_sehir_array[guncel_hafta]={}
+                guncel_gun=math.floor(fark/bir_gun)
+                veri=gunluk_ulke_sayac[i]
+                for j in veri:
+                    if not j in hafta_sayilar[guncel_hafta]:
+                        hafta_sayilar[guncel_hafta][j]=[0,0]
+                        hafta_array[guncel_hafta][j]=[]
+                        hafta_sehir_array[guncel_hafta][j]={}
+                    if not j in ulke_gecerli_gun_miktar:ulke_gecerli_gun_miktar[j]=0
+                    ulke_gecerli_gun_miktar[j]+=1
+                    hafta_sayilar[guncel_hafta][j]=[hafta_sayilar[guncel_hafta][j][0]+veri[j][0],hafta_sayilar[guncel_hafta][j][1]+veri[j][1]]
+                    hafta_array[guncel_hafta][j].append([guncel_gun,veri[j][0],veri[j][1]])
+                sehir=gunluk_sehir_sayac[i]
+                for j in sehir:
+                    for q in sehir[j]:
+                        if not q in hafta_sehir_array[guncel_hafta][j]:
+                            hafta_sehir_array[guncel_hafta][j][q]=[]
+                        hafta_sehir_array[guncel_hafta][j][q].append([guncel_gun,sehir[j][q][0],sehir[j][q][1]])
+
+            to_delete=[]
+            header=["date","cc","data","capital","hdi","corruption","is_near_war"]
             for i in hafta_sayilar:
                 for j in hafta_sayilar[i]:
-                    if not j in cc: continue
-                    deger=math.floor(1000*oranla(hafta_sayilar[i][j][1],hafta_sayilar[i][j][0]))/10
-                    data_arr=[[0,0]]*7
-                    for idx in range(len(hafta_array[i][j])): 
-                        e=hafta_array[i][j][idx]
-                        data_arr[e[0]]=[e[1],e[2]]
-                    writer.writerow([
-                        hafta_tarihler[sayac], 
-                        j,
-                        json.dumps(data_arr,separators=(',', ':')),
-                        hdi[cc[j]] if cc[j] in hdi else 0,
-                        corruption_dict[cc[j]] if cc[j] in corruption_dict else 50, 
-                        False
-                    ])
-                sayac+=1
-        header=["date","cc","city","data"]
-        with open("./data/city_data.csv", mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(header)
-            sayac=0
-            for i in hafta_sehir_array :
-                for j in hafta_sehir_array[i]:
-                    for q in hafta_sehir_array[i][j]:
+                    if ulke_gecerli_gun_miktar[j]!=gecerli_miktar: to_delete.append([i,j])
+            for i in to_delete:
+                del hafta_sayilar[i[0]][i[1]]
+                del hafta_array[i[0]][i[1]]
+            with open("./data/country_data.csv", mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(header)
+                sayac=0
+                for i in hafta_sayilar:
+                    for j in hafta_sayilar[i]:
+                        if not j in cc: continue
+                        deger=math.floor(1000*oranla(hafta_sayilar[i][j][1],hafta_sayilar[i][j][0]))/10
                         data_arr=[[0,0]]*7
-                        for idx in range(len(hafta_sehir_array[i][j][q])): 
-                            e=hafta_sehir_array[i][j][q][idx]
+                        for idx in range(len(hafta_array[i][j])): 
+                            e=hafta_array[i][j][idx]
                             data_arr[e[0]]=[e[1],e[2]]
-                            writer.writerow([
-                                hafta_tarihler[sayac], 
-                                j,
-                                q,
-                                json.dumps(data_arr,separators=(',', ':')),
-                            ])
-                sayac+=1
+                        writer.writerow([
+                            hafta_tarihler[sayac], 
+                            j,
+                            json.dumps(data_arr,separators=(',', ':')),
+                            baskent_dict[cc[j]]  if cc[j] in baskent_dict else "",
+                            hdi[cc[j]] if cc[j] in hdi else 0.63,
+                            corruption_dict[cc[j]] if cc[j] in corruption_dict else 50.3,
+                            False
+                        ])
+                    sayac+=1
+            header=["date","cc","city","data"]
+            with open("./data/city_data.csv", mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(header)
+                sayac=0
+                for i in hafta_sehir_array :
+                    for j in hafta_sehir_array[i]:
+                        if len(j)==0:continue
+                        for q in hafta_sehir_array[i][j]:
+                            data_arr=[[0,0]]*7
+                            for idx in range(len(hafta_sehir_array[i][j][q])): 
+                                e=hafta_sehir_array[i][j][q][idx]
+                                data_arr[e[0]]=[e[1],e[2]]
+                                writer.writerow([
+                                    hafta_tarihler[sayac], 
+                                    j,
+                                    q,
+                                    json.dumps(data_arr,separators=(',', ':')),
+                                ])
+                    sayac+=1
+        del veriler,gunluk_sehir_sayac,gunluk_ulke_sayac,hafta_sayilar,hafta_array
+        gc.collect()
+    print("Parsing countries")
     country_df=pd.read_csv("./data/country_data.csv")
-    country_df["data"]=country_df["data"].apply(json.loads)
+    baskentler={}
+    for row in country_df.rows(named=True):
+        baskentler[row["cc"]]=row["capital"]
+    country_df = country_df.with_columns(country_df["data"].str.json_decode().alias("data"))
+    print("Parsing cities")
     city_df=pd.read_csv("./data/city_data.csv")
-    city_df["data"]=city_df["data"].apply(json.loads)
+    city_df = city_df.with_columns(city_df["data"].str.json_decode().alias("data"))
+    print("Starting")
     if yapilacaklar["baskent"]:
-        baskentler=pd.read_csv("./data/countries.csv")
-        baskent_dict={}
-        for _,i in baskentler.iterrows():
-            baskent_dict[i["country"]]=i["capital"]
+        sayac=0
+        miktar=city_df.shape[0]
         ulke_basine_jammer_sehir={}
-        for _,row in city_df.iterrows():
+        for row in city_df.rows(named=True):
+            if sayac%10000==0:
+                print(str(sayac)+"/"+str(miktar)+" "*10+"\r",end="")
+            sayac+=1
             data=row["data"]
             country=row["cc"]
             city=row["city"]
-            if  city!=city: continue
+            sayac+=1
+            if city!=city: continue
             jammer_var=False
             for i in range(7):
                 if data[i][1]:
@@ -185,7 +236,18 @@ if __name__ == '__main__':
                     ulke_basine_jammer_sehir[country][city][1]+data[i][1]]
         sehir_siralanmis={i:sorted(list(ulke_basine_jammer_sehir[i].items()),
         key=lambda a:list_oranla(ulke_basine_jammer_sehir[i][a[0]])) for i in ulke_basine_jammer_sehir}
-        #ülke başına en çok jammer içeren şehirler sıralandı ama başkentte var mı hipotezi kontrol edilecek
+        print()
+        print(sehir_siralanmis)
+        """
+        H0: Ülke başkentiyle diğer şehirleri arasında GPS Jammer yoğunluğu açısından kayda değer fark yoktur.
+
+        H1: Ülke başkentleri, Jammer yoğunluğu açısından ülkelerindeki ilk %25'lik dilime girerler.
+
+        """
+        gecerli=0
+        total=0
+        for i in sehir_siralanmis:
+            print("i",i,sehir_siralanmis[i])
 
     if yapilacaklar["video"]:
         genis_dict={"date":[]}
