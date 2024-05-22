@@ -403,7 +403,7 @@ if __name__ == '__main__':
         print("-"*30+"""
         H0: Ülkenin savaş halinde bir ülkeyle sınır komşusu olması GPS Jammer oranını etkilemez.
 
-        H1: Savaş halindeki ülkelerle sınır komşusu olan ülkelerde GPS Jammer yoğunluğu ortalamadan fazladır
+        H1: Savaş halindeki ülkelerle sınır komşusu olan ülkelerde GPS Jammer yoğunluğu diğer ülkelere göre fazladır
 
         """)
         farklar=[]
@@ -417,7 +417,7 @@ if __name__ == '__main__':
         p_value=stats.wilcoxon(savasta,total_sample,alternative="greater").pvalue
         print("p:",p_value)
         if p_value < 0.05:
-            print("\tSavaş halindeki ülkelerle sınır komşusu olan ülkelerde GPS Jammer yoğunluğu ortalamadan fazladır.")
+            print("\tSavaş halindeki ülkelerle sınır komşusu olan ülkelerde GPS Jammer yoğunluğu diğer ülkelerden fazladır.")
         else:
             print("\tÜlkenin savaş halinde bir ülkeyle sınır komşusu olması GPS Jammer oranını arttırdığı söylenemez.")
         sb.set(style='whitegrid')
