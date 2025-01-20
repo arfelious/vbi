@@ -34,7 +34,7 @@ if __name__ == '__main__':
         global plot_sayac
         plt.figure()
         plot_sayac=plot_miktar*100+20
-    yapilacaklar={"olustur":False,"istatistik":True,"test":False,"video":False,"baskent":True,"savas":True,"koreleasyon":True,"gun":True}
+    yapilacaklar={"olustur":True,"istatistik":False,"test":False,"video":True,"baskent":True,"savas":True,"koreleasyon":True,"gun":True}
     cizilecek={"koreleasyon","baskent","savas"}
     ulke_basine_jammer_sehir={}
     jammer_oranlar=[]
@@ -300,10 +300,10 @@ if __name__ == '__main__':
     
     miktar=city_df.shape[0]
     for row in city_df.iter_rows(named=True,buffer_size=250000):
+        sayac+=1
         if sayac%10000==0:surec(sayac,miktar)
         for f in yaptirilacaklar_list:
             f(row,sayac)
-        sayac+=1
     surec(sayac,miktar) # \r içeren satırı temizlemek için
     if yapilacaklar["koreleasyon"]:
         country_df = country_df.with_columns(country_df["data"].map_elements(lambda a:reduce(lambda acc,x:acc+list_oranla(x),a,0)/len(a),pl.Float64).alias("ratio"))
